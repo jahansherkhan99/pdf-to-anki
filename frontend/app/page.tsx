@@ -18,6 +18,7 @@ export default function Home() {
   const [jobId, setJobId] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const disconnected = useRef(false);
 
   const appendLog = useCallback((line: string) => {
     setLogs((prev) => [...prev, line]);
@@ -85,8 +86,13 @@ export default function Home() {
     }
 
     // 2. Stream progress via SSE
+    disconnected.current = false;
     const es = new EventSource(`${API_URL}/api/progress/${jid}`);
     es.onmessage = (e) => {
+      if (disconnected.current) {
+        disconnected.current = false;
+        appendLog("Reconnected.");
+      }
       const payload = e.data as string;
       if (payload === "[DONE]") {
         es.close();
@@ -106,7 +112,10 @@ export default function Home() {
     es.onerror = () => {
       // Don't close — EventSource will auto-reconnect with Last-Event-ID
       // and the server will resume from where it left off.
-      appendLog("Connection lost, reconnecting...");
+      if (!disconnected.current) {
+        disconnected.current = true;
+        appendLog("Connection lost, reconnecting...");
+      }
     };
   };
 
