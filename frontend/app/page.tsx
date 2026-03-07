@@ -104,9 +104,9 @@ export default function Home() {
       }
     };
     es.onerror = () => {
-      es.close();
-      setStatus((s) => (s === "running" ? "error" : s));
-      appendLog("Connection to server lost.");
+      // Don't close — EventSource will auto-reconnect with Last-Event-ID
+      // and the server will resume from where it left off.
+      appendLog("Connection lost, reconnecting...");
     };
   };
 
