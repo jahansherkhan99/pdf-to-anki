@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background: #f4f6fb;
+}
+
+/* Custom scrollbar for log area */
+.log-area::-webkit-scrollbar {
+  width: 6px;
+}
+.log-area::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+.log-area::-webkit-scrollbar-thumb {
+  background: #1565c0;
+  border-radius: 3px;
+}

@@ -4,3 +4,6 @@ python-pptx>=1.0.0
 genanki>=0.13.0
 tkinterdnd2>=0.3.0
 fpdf2>=2.7.0
+flask>=3.0.0
+flask-cors>=4.0.0
+gunicorn>=21.2.0
