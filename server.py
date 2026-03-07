@@ -73,7 +73,7 @@ def _run_job(
         if mode in ("flashcards", "both"):
             card_chunks = chunk_pages(pages, MAX_CHUNK_WORDS)
             log(f"Generating flashcards — {len(card_chunks)} chunk(s)...")
-            cards = generate_all_cards(client, card_chunks)
+            cards = generate_all_cards(client, card_chunks, log_fn=log)
             log(f"Generated {len(cards)} cards. Building Anki deck...")
             apkg_path = os.path.join(out_dir, f"{deck_name}.apkg")
             count = build_deck(cards, deck_name, apkg_path)
@@ -82,7 +82,7 @@ def _run_job(
         if mode in ("vignettes", "both"):
             vig_chunks = chunk_pages(pages, MAX_VIGNETTE_CHUNK_WORDS)
             log(f"Generating vignette questions — {len(vig_chunks)} chunk(s)...")
-            questions = generate_all_questions(client, vig_chunks)
+            questions = generate_all_questions(client, vig_chunks, log_fn=log)
             log(f"Generated {len(questions)} questions. Building PDF...")
             pdf_path = os.path.join(out_dir, f"{deck_name}_questions.pdf")
             written = build_pdf(questions, deck_name, pdf_path)

@@ -121,10 +121,16 @@ def _generate_chunk(
     chunk_index: int,
     total_chunks: int,
     retries: int = 2,
+    log_fn=None,
 ) -> List[Dict[str, Any]]:
     """Call Claude for a single chunk, with simple retry on transient errors."""
+    def log(msg):
+        print(f"  {msg}")
+        if log_fn:
+            log_fn(msg)
+
     label = f"chunk {chunk_index}/{total_chunks} (pages {chunk['start']}–{chunk['end']})"
-    print(f"  Processing {label}...")
+    log(f"Flashcards: starting {label}...")
 
     user_msg = _USER_TEMPLATE.format(
         start=chunk["start"],
@@ -143,20 +149,20 @@ def _generate_chunk(
             ) as stream:
                 response_text = stream.get_final_text()
             cards = _parse_response(response_text)
-            print(f"    -> {len(cards)} cards generated")
+            log(f"Flashcards: {label} done — {len(cards)} cards generated.")
             return cards
         except (anthropic.RateLimitError, anthropic.APIStatusError) as exc:
             last_error = exc
             if attempt <= retries:
                 wait = 10 * attempt
-                print(f"    API error ({exc}); retrying in {wait}s...")
+                log(f"Flashcards: {label} API error, retrying in {wait}s (attempt {attempt}/{retries + 1})...")
                 time.sleep(wait)
         except (json.JSONDecodeError, ValueError) as exc:
             last_error = exc
             if attempt <= retries:
-                print(f"    Parse error ({exc}); retrying...")
+                log(f"Flashcards: {label} parse error, retrying (attempt {attempt}/{retries + 1})...")
 
-    print(f"    WARNING: Skipping {label} after {retries + 1} failed attempts: {last_error}")
+    log(f"WARNING: Flashcards: skipping {label} after {retries + 1} failed attempts: {last_error}")
     return []
 
 
@@ -167,6 +173,7 @@ def _generate_chunk(
 def generate_all_cards(
     client: anthropic.Anthropic,
     chunks: List[dict],
+    log_fn=None,
 ) -> List[Dict[str, Any]]:
     """
     Iterate over all text chunks, call Claude for each, and return the
@@ -175,6 +182,6 @@ def generate_all_cards(
     all_cards: List[Dict[str, Any]] = []
     total = len(chunks)
     for i, chunk in enumerate(chunks, start=1):
-        cards = _generate_chunk(client, chunk, i, total)
+        cards = _generate_chunk(client, chunk, i, total, log_fn=log_fn)
         all_cards.extend(cards)
     return all_cards

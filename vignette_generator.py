@@ -184,9 +184,15 @@ def _generate_chunk(
     chunk_index: int,
     total_chunks: int,
     retries: int = 2,
+    log_fn=None,
 ) -> List[Dict[str, Any]]:
+    def log(msg):
+        print(f"  {msg}")
+        if log_fn:
+            log_fn(msg)
+
     label = f"chunk {chunk_index}/{total_chunks} (pages {chunk['start']}–{chunk['end']})"
-    print(f"  Processing {label}...")
+    log(f"Vignettes: starting {label}...")
 
     user_msg = _USER_TEMPLATE.format(
         start=chunk["start"],
@@ -205,20 +211,20 @@ def _generate_chunk(
             ) as stream:
                 response_text = stream.get_final_text()
             questions = _parse_response(response_text)
-            print(f"    -> {len(questions)} questions generated")
+            log(f"Vignettes: {label} done — {len(questions)} questions generated.")
             return questions
         except (anthropic.RateLimitError, anthropic.APIStatusError) as exc:
             last_error = exc
             if attempt <= retries:
                 wait = 10 * attempt
-                print(f"    API error ({exc}); retrying in {wait}s...")
+                log(f"Vignettes: {label} API error, retrying in {wait}s (attempt {attempt}/{retries + 1})...")
                 time.sleep(wait)
         except (json.JSONDecodeError, ValueError) as exc:
             last_error = exc
             if attempt <= retries:
-                print(f"    Parse error ({exc}); retrying...")
+                log(f"Vignettes: {label} parse error, retrying (attempt {attempt}/{retries + 1})...")
 
-    print(f"    WARNING: Skipping {label} after {retries + 1} failed attempts: {last_error}")
+    log(f"WARNING: Vignettes: skipping {label} after {retries + 1} failed attempts: {last_error}")
     return []
 
 
@@ -229,11 +235,12 @@ def _generate_chunk(
 def generate_all_questions(
     client: anthropic.Anthropic,
     chunks: List[dict],
+    log_fn=None,
 ) -> List[Dict[str, Any]]:
     """Process all chunks and return the combined list of question dicts."""
     all_questions: List[Dict[str, Any]] = []
     total = len(chunks)
     for i, chunk in enumerate(chunks, start=1):
-        questions = _generate_chunk(client, chunk, i, total)
+        questions = _generate_chunk(client, chunk, i, total, log_fn=log_fn)
         all_questions.extend(questions)
     return all_questions
