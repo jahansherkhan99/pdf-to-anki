@@ -163,9 +163,10 @@ def progress(job_id: str):
     if not job:
         return jsonify({"error": "Job not found"}), 404
 
+    # Read request data before entering the generator (request context unavailable inside)
+    last_id = request.headers.get("Last-Event-ID", None)
+
     def stream():
-        # Resume from last seen event on reconnect (browser sends Last-Event-ID)
-        last_id = request.headers.get("Last-Event-ID", None)
         idx = int(last_id) + 1 if last_id is not None else 0
 
         while True:
