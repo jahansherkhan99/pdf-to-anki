@@ -151,7 +151,13 @@ def _generate_chunk(
             cards = _parse_response(response_text)
             log(f"Flashcards: {label} done — {len(cards)} cards generated.")
             return cards
-        except (anthropic.RateLimitError, anthropic.APIStatusError) as exc:
+        except anthropic.RateLimitError as exc:
+            last_error = exc
+            if attempt <= retries:
+                wait = 60 * attempt  # rate limit window is per minute
+                log(f"Flashcards: {label} rate limited, waiting {wait}s (attempt {attempt}/{retries + 1})...")
+                time.sleep(wait)
+        except anthropic.APIStatusError as exc:
             last_error = exc
             if attempt <= retries:
                 wait = 10 * attempt

@@ -213,7 +213,13 @@ def _generate_chunk(
             questions = _parse_response(response_text)
             log(f"Vignettes: {label} done — {len(questions)} questions generated.")
             return questions
-        except (anthropic.RateLimitError, anthropic.APIStatusError) as exc:
+        except anthropic.RateLimitError as exc:
+            last_error = exc
+            if attempt <= retries:
+                wait = 60 * attempt  # rate limit window is per minute
+                log(f"Vignettes: {label} rate limited, waiting {wait}s (attempt {attempt}/{retries + 1})...")
+                time.sleep(wait)
+        except anthropic.APIStatusError as exc:
             last_error = exc
             if attempt <= retries:
                 wait = 10 * attempt
