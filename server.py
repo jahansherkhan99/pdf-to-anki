@@ -13,9 +13,9 @@ Endpoints:
 from __future__ import annotations
 
 import os
-import queue
 import tempfile
 import threading
+import time
 import uuid
 import zipfile
 from typing import Any, Dict
@@ -54,10 +54,9 @@ def _run_job(
     deck_name: str,
     out_dir: str,
 ) -> None:
-    q = _jobs[job_id]["queue"]
-
     def log(msg: str) -> None:
-        q.put(("log", msg))
+        with _jobs_lock:
+            _jobs[job_id]["logs"].append(("log", msg))
         print(f"[{job_id[:8]}] {msg}")
 
     try:
@@ -106,11 +105,8 @@ def _run_job(
         with _jobs_lock:
             _jobs[job_id]["status"] = "error"
             _jobs[job_id]["error"] = str(exc)
-        q.put(("error", str(exc)))
+            _jobs[job_id]["logs"].append(("error", str(exc)))
         print(f"[{job_id[:8]}] ERROR: {exc}")
-
-    finally:
-        q.put(None)  # sentinel — tells SSE stream to close
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +142,7 @@ def generate():
     with _jobs_lock:
         _jobs[job_id] = {
             "status": "running",
-            "queue": queue.Queue(),
+            "logs": [],   # list of (kind, msg) — persists across reconnects
             "result_path": None,
             "error": None,
         }
@@ -168,19 +164,28 @@ def progress(job_id: str):
         return jsonify({"error": "Job not found"}), 404
 
     def stream():
-        q = job["queue"]
+        # Resume from last seen event on reconnect (browser sends Last-Event-ID)
+        last_id = request.headers.get("Last-Event-ID", None)
+        idx = int(last_id) + 1 if last_id is not None else 0
+
         while True:
-            try:
-                item = q.get(timeout=15)
-            except queue.Empty:
-                yield ": keepalive\n\n"
-                continue
-            if item is None:
+            with _jobs_lock:
+                logs = list(job["logs"])
+                status = job["status"]
+
+            # Send any log entries the client hasn't seen yet
+            while idx < len(logs):
+                kind, msg = logs[idx]
+                yield f"id: {idx}\ndata: {kind}:{msg}\n\n"
+                idx += 1
+
+            if status in ("done", "error"):
                 yield "data: [DONE]\n\n"
                 break
-            kind, msg = item
-            # SSE format: "data: <payload>\n\n"
-            yield f"data: {kind}:{msg}\n\n"
+
+            # Job still running — keep connection alive and poll
+            yield ": keepalive\n\n"
+            time.sleep(2)
 
     return Response(
         stream(),
