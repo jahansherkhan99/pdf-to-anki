@@ -1,0 +1,6 @@
+anthropic>=0.84.0
+PyMuPDF>=1.27.0
+python-pptx>=1.0.0
+genanki>=0.13.0
+tkinterdnd2>=0.3.0
+fpdf2>=2.7.0
