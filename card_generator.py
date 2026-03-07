@@ -155,7 +155,7 @@ def _generate_chunk(
             last_error = exc
             if attempt <= retries:
                 wait = 10 * attempt
-                log(f"Flashcards: {label} API error, retrying in {wait}s (attempt {attempt}/{retries + 1})...")
+                log(f"Flashcards: {label} API error ({exc}), retrying in {wait}s (attempt {attempt}/{retries + 1})...")
                 time.sleep(wait)
         except (json.JSONDecodeError, ValueError) as exc:
             last_error = exc
