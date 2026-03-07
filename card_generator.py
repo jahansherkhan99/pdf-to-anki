@@ -120,7 +120,7 @@ def _generate_chunk(
     chunk: dict,
     chunk_index: int,
     total_chunks: int,
-    retries: int = 2,
+    retries: int = 5,
     log_fn=None,
 ) -> List[Dict[str, Any]]:
     """Call Claude for a single chunk, with simple retry on transient errors."""
@@ -154,7 +154,7 @@ def _generate_chunk(
         except anthropic.RateLimitError as exc:
             last_error = exc
             if attempt <= retries:
-                wait = 60 * attempt  # rate limit window is per minute
+                wait = 65  # slightly over 1 minute so the per-minute counter resets
                 log(f"Flashcards: {label} rate limited, waiting {wait}s (attempt {attempt}/{retries + 1})...")
                 time.sleep(wait)
         except anthropic.APIStatusError as exc:
