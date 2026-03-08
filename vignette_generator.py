@@ -18,6 +18,7 @@ Each question is built using a strict 10-step board-item algorithm:
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 from typing import Any, Dict, List
@@ -235,6 +236,62 @@ def _generate_chunk(
 
 
 # ---------------------------------------------------------------------------
+# Answer-distribution helpers
+# ---------------------------------------------------------------------------
+
+_LETTERS = ["A", "B", "C", "D", "E"]
+
+
+def _redistribute_correct_answers(questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Rotate each question's answer choices so correct answers are spread
+    as evenly as possible across A–E (~20% each), in random order."""
+    if not questions:
+        return questions
+
+    n = len(questions)
+    # Build target list: floor(n/5) of each letter, then one extra for the remainder
+    targets: List[str] = []
+    for i, letter in enumerate(_LETTERS):
+        count = n // 5 + (1 if i < n % 5 else 0)
+        targets.extend([letter] * count)
+    random.shuffle(targets)
+
+    redistributed = []
+    for question, target in zip(questions, targets):
+        current = question.get("correct", "A")
+        choices = question.get("choices", {})
+
+        if target == current or current not in _LETTERS:
+            redistributed.append(question)
+            continue
+
+        # Compute rotation shift so current → target
+        shift = _LETTERS.index(target) - _LETTERS.index(current)
+
+        new_choices = {
+            _LETTERS[(_LETTERS.index(ltr) + shift) % 5]: text
+            for ltr, text in choices.items()
+            if ltr in _LETTERS
+        }
+
+        old_distractors = question.get("distractor_explanations", {})
+        new_distractors = {
+            _LETTERS[(_LETTERS.index(ltr) + shift) % 5]: explanation
+            for ltr, explanation in old_distractors.items()
+            if ltr in _LETTERS
+        }
+
+        redistributed.append({
+            **question,
+            "choices": new_choices,
+            "correct": target,
+            "distractor_explanations": new_distractors,
+        })
+
+    return redistributed
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -249,4 +306,4 @@ def generate_all_questions(
     for i, chunk in enumerate(chunks, start=1):
         questions = _generate_chunk(client, chunk, i, total, log_fn=log_fn)
         all_questions.extend(questions)
-    return all_questions
+    return _redistribute_correct_answers(all_questions)
