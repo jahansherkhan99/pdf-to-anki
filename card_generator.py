@@ -2,9 +2,12 @@
 card_generator.py — Use the Claude API to turn raw medical text into
 structured Anki card data (list of dicts).
 
-Two card types are generated per chunk:
-  - "cloze"  → for discrete, memorisable facts (drugs, values, mechanisms)
-  - "basic"  → for clinical presentations, concepts, and reasoning
+Default card type is cloze deletion.  Two formats are used:
+
+  - "cloze" (VIGNETTE style) → clinical presentations/diagnoses written as a
+    patient scenario with the diagnosis as the cloze blank
+  - "cloze" (STANDARD style) → definitions, mechanisms, treatments, lab values
+  - "basic" → last resort only; avoided unless content truly cannot be cloze
 """
 
 from __future__ import annotations
@@ -24,52 +27,94 @@ from config import MODEL
 
 _SYSTEM = """\
 You are an expert medical educator building Anki flashcards for a medical \
-student preparing for in-house (shelf / NBME-style) exams.
+student preparing for shelf / NBME-style exams.
 
-Given a section of medical lecture notes or slides, generate a comprehensive \
-set of high-yield Anki flashcards in TWO formats:
+══════════════════════════════════════════════════════════════════════════════
+DEFAULT FORMAT: CLOZE DELETION
+══════════════════════════════════════════════════════════════════════════════
+Cloze deletion is the default for EVERY card. Only use the "basic" type as a
+last resort when content genuinely cannot be expressed as a cloze.
 
-──────────────────────────────────────────────────────────────────────────────
-CARD TYPE 1 — CLOZE  (for memorisable facts)
-──────────────────────────────────────────────────────────────────────────────
-Use for:
-  • Drug names, mechanisms of action, doses
-  • Specific lab values, cut-offs, and diagnostic criteria
-  • Epidemiology numbers and risk-factor associations
-  • Pathophysiology steps and buzzword pairings
-  • Classic findings (e.g., "strawberry cervix → Trichomonas")
+Use {{c1::answer}} for the first blank, {{c2::answer}} for the second, etc.
+Keep 1–2 cloze deletions per card; never more than 3.
+The "extra" field: mnemonic, clinical pearl, or the "why" behind the fact.
 
-Rules:
-  • Use {{c1::answer}} for the first blank, {{c2::answer}} for the second, etc.
-  • Keep 1–3 cloze deletions per card; never more.
-  • The "extra" field should contain a helpful mnemonic, clinical pearl, or
-    the broader context that makes the fact stick.
+══════════════════════════════════════════════════════════════════════════════
+FORMAT A — VIGNETTE-STYLE CLOZE  ← USE THIS for clinical presentations
+══════════════════════════════════════════════════════════════════════════════
+WHEN TO USE:
+  • Any disease, syndrome, or diagnosis defined by a cluster of symptoms/signs
+  • Classic triads, tetrads, or constellations
+  • Diagnosis-from-presentation pattern recognition
+  • Any time a student would need to identify a condition from clinical clues
 
-──────────────────────────────────────────────────────────────────────────────
-CARD TYPE 2 — BASIC  (for clinical reasoning and concepts)
-──────────────────────────────────────────────────────────────────────────────
-Use for:
-  • Clinical presentations and characteristic symptom constellations
-  • Differential diagnosis questions
-  • Management algorithms and first-line treatments
-  • Pathophysiology explanations (the "why")
-  • Exam-style vignette-style questions
+HOW TO WRITE IT:
+  Present as a one-sentence patient scenario. Hide the diagnosis as the cloze.
 
-Rules:
-  • "front": Write as a pointed clinical question. Be specific.
-    Good: "What is the pathophysiology of HRS Type 1?"
-    Bad:  "Tell me about hepatorenal syndrome."
-  • "back": Use numbered lists or bullet points for clarity.
-    Include key distinguishing features and exam high-yield details.
+  Template:
+    "A patient presents with [key symptoms/findings]; the most likely
+     diagnosis is {{c1::DIAGNOSIS}}."
 
-──────────────────────────────────────────────────────────────────────────────
+  Rules:
+    • Include only the 2–4 discriminating features that point to that diagnosis
+    • Do NOT name the diagnosis in the stem — it is always the cloze blank
+    • Extra field: explain why those clues point to this diagnosis; add
+      differentiating feature vs. the nearest look-alike
+
+  Examples:
+    ✓ "A patient presents with fever, jaundice, and right upper quadrant pain;
+       the most likely diagnosis is {{c1::acute cholangitis (Charcot's triad)}}."
+       Extra: "Add altered mental status + hypotension → Reynolds pentad
+               (suppurative cholangitis). Distinguish from cholecystitis:
+               cholangitis has jaundice."
+
+    ✓ "A young woman presents with malar rash, arthritis, and
+       anti-dsDNA antibodies; the most likely diagnosis is {{c1::SLE}}."
+       Extra: "Butterfly rash spares nasolabial folds. ANA sensitive,
+               anti-dsDNA specific."
+
+    ✓ "A patient with a history of GERD presents with dysphagia to solids
+       progressing to liquids and weight loss; the most likely diagnosis
+       is {{c1::esophageal adenocarcinoma}}."
+
+══════════════════════════════════════════════════════════════════════════════
+FORMAT B — STANDARD CLOZE  ← USE THIS for non-presentation facts
+══════════════════════════════════════════════════════════════════════════════
+WHEN TO USE:
+  • Definitions, mechanisms of action, pathophysiology steps
+  • Drug names, doses, side effects, contraindications
+  • Lab values, diagnostic criteria, cut-offs
+  • Buzzword associations and classic findings
+  • Treatments and first-line agents
+
+  Examples:
+    ✓ "{{c1::Charcot's triad}} consists of fever, jaundice, and RUQ pain."
+    ✓ "The most common cause of community-acquired pneumonia is
+       {{c1::Streptococcus pneumoniae}}."
+    ✓ "Metformin's mechanism: inhibits {{c1::Complex I of the mitochondrial
+       electron transport chain}}, reducing hepatic gluconeogenesis."
+    ✓ "HbA1c reflects average blood glucose over the past {{c1::2–3 months}}
+       due to the lifespan of {{c2::RBCs}}."
+
+══════════════════════════════════════════════════════════════════════════════
+FORMAT C — BASIC (LAST RESORT ONLY)
+══════════════════════════════════════════════════════════════════════════════
+Only use when multi-step reasoning, a comparison table, or a management
+algorithm genuinely cannot be expressed as a single cloze statement.
+Aim for fewer than 5% of cards to be basic type.
+
+  Rules:
+    • "front": Pointed clinical question. Not "Tell me about X."
+      Good: "What distinguishes Type 1 from Type 2 HRS?"
+    • "back": Bullet points. Key distinguishing features only.
+
+══════════════════════════════════════════════════════════════════════════════
 GENERAL RULES
-──────────────────────────────────────────────────────────────────────────────
-  • Only include medically relevant, high-yield information.
+══════════════════════════════════════════════════════════════════════════════
   • Cover every disease, drug, mechanism, and clinical pearl in the content.
-  • Do NOT generate duplicate cards or trivially rephrased variants.
-  • Use correct medical terminology throughout.
-  • Aim for 15–30 cards per content chunk depending on density.
+  • Only high-yield, testable concepts — no filler, no redundancy.
+  • Do NOT hallucinate beyond the provided content.
+  • Aim for 15–30 cards per chunk depending on density.
 
 OUTPUT FORMAT — return ONLY raw JSON (no markdown, no code fences, no prose):
 {
