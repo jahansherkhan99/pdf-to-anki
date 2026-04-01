@@ -228,11 +228,16 @@ def generate_all_cards(
 ) -> List[Dict[str, Any]]:
     """
     Iterate over all text chunks, call Claude for each, and return the
-    combined list of raw card dicts.
+    combined list of raw card dicts.  Each card is stamped with a
+    'chunk_label' key (e.g. "Pages 1–15") used by anki_builder to create
+    one subdeck per chunk.
     """
     all_cards: List[Dict[str, Any]] = []
     total = len(chunks)
     for i, chunk in enumerate(chunks, start=1):
         cards = _generate_chunk(client, chunk, i, total, log_fn=log_fn)
+        label = f"Pages {chunk['start']}–{chunk['end']}"
+        for card in cards:
+            card["chunk_label"] = label
         all_cards.extend(cards)
     return all_cards
